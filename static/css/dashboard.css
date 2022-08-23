@@ -485,7 +485,7 @@ ul.multiselect input:focus {
   }
 }
 
-@media screen and (max-width: 450px) {
+@media screen and (max-width: 540px) {
   .outer-container { padding: 0 }
   .summary-table, .validator-history-index { font-size: .9rem }
   .dashboard-table-nav-text { display: none }

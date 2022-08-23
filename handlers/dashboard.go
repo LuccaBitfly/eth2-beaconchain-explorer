@@ -524,3 +524,125 @@ func DashboardDataProposalsHistory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 }
+
+func DashboardDataSync(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	q := r.URL.Query()
+	validatorLimit := getUserPremium(r).MaxValidators
+	filterArr, err := parseValidatorsFromQueryString(q.Get("validators"), validatorLimit)
+	if err != nil {
+		http.Error(w, "Invalid query", 400)
+		return
+	}
+	filter := pq.Array(filterArr)
+
+	draw, err := strconv.ParseUint(q.Get("draw"), 10, 64)
+	if err != nil {
+		logger.Errorf("error converting dashboard datatables data draw-parameter from string to int: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+	start, err := strconv.ParseInt(q.Get("start"), 10, 64)
+	if err != nil {
+		logger.Errorf("error converting dashboard datatables start start-parameter from string to int: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+	length, err := strconv.ParseInt(q.Get("length"), 10, 64)
+	if err != nil {
+		logger.Errorf("error converting dashboard datatables length length-parameter from string to int: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+	if length > 100 {
+		length = 100
+	}
+
+	orderDir := q.Get("order[0][dir]")
+	if orderDir != "desc" && orderDir != "asc" {
+		orderDir = "desc"
+	}
+
+	orderColumn := q.Get("order[0][column]")
+	orderByMap := map[string]string{
+		"0": fmt.Sprintf("validatorindex %[1]s", orderDir),
+		"1": fmt.Sprintf("sa.week %[1]s, sa.slot %[1]s", orderDir),
+		"2": fmt.Sprintf("sa.week %[1]s, sa.slot %[1]s", orderDir),
+		"3": fmt.Sprintf("sa.week %[1]s, sa.slot %[1]s", orderDir),
+		"4": fmt.Sprintf("sa.status %[1]s", orderDir),
+	}
+	orderBy, exists := orderByMap[orderColumn]
+	if !exists {
+		orderBy = orderByMap["1"]
+	}
+
+	var countData struct {
+		TotalCount uint64 `db:"totalcount"`
+		MaxPeriod  uint64 `db:"maxperiod"`
+	}
+	err = db.ReaderDb.Get(&countData, `
+		SELECT count(*)*$1 AS totalcount, COALESCE(max(period), 0) AS maxperiod 
+		FROM sync_committees 
+		WHERE validatorindex = ANY($2)`,
+		utils.Config.Chain.Config.EpochsPerSyncCommitteePeriod*utils.Config.Chain.Config.SlotsPerEpoch, filter)
+	if err != nil {
+		logger.WithError(err).Errorf("error getting countData of sync-assignments for dashboard")
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	totalCount := uint64(0)
+	tableData := [][]interface{}{}
+
+	// only show 1 scheduled slot in the sync-table
+	totalCount = countData.TotalCount
+	var dbRows []struct {
+		ValidatorIndex    uint64  `db:"validatorindex"`
+		Slot              uint64  `db:"slot"`
+		Status            uint64  `db:"status"`
+		ParticipationRate float64 `db:"participation"`
+	}
+	err = db.ReaderDb.Select(&dbRows, `
+			SELECT validatorindex, sa.slot, sa.status, COALESCE(b.syncaggregate_participation,0) AS participation
+			FROM sync_assignments_p sa
+			LEFT JOIN blocks b ON sa.slot = b.slot
+			WHERE validatorindex = ANY($1)
+			ORDER BY `+orderBy+`
+			LIMIT $2 OFFSET $3`, filter, length, start)
+	if err != nil {
+		logger.Errorf("error retrieving validator sync participations data: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+	tableData = make([][]interface{}, len(dbRows))
+	for i, r := range dbRows {
+		epoch := utils.EpochOfSlot(r.Slot)
+		participation := template.HTML("-") // no participation fro scheduled and nonblock-slots
+		if r.Status != 0 && r.Status != 3 {
+			participation = utils.FormatPercentageColored(r.ParticipationRate)
+		}
+		tableData[i] = []interface{}{
+			utils.FormatValidator(r.ValidatorIndex),
+			fmt.Sprintf("%d", utils.SyncPeriodOfEpoch(epoch)),
+			utils.FormatEpoch(epoch),
+			utils.FormatBlockSlot(r.Slot),
+			utils.FormatSyncParticipationStatus(r.Status),
+			participation,
+		}
+	}
+
+	data := &types.DataTableResponse{
+		Draw:            draw,
+		RecordsTotal:    totalCount,
+		RecordsFiltered: totalCount,
+		Data:            tableData,
+	}
+
+	err = json.NewEncoder(w).Encode(data)
+	if err != nil {
+		logger.Errorf("error enconding json response for %v route: %v", r.URL.String(), err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+}

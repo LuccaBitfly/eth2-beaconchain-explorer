@@ -46,8 +46,8 @@ function showValidatorHist(index) {
     ordering: false,
     searching: false,
     details: false,
-    //pagingType: 'input', //not working
-    pagingType: "simple",
+    pagingType: 'input', //working again
+    //pagingType: "simple",
     pageLength: 10,
     ajax: "/validator/" + index + "/history",
     language: {
@@ -200,7 +200,10 @@ function addValidatorUpdateUI() {
     })
   })
   showProposedHistoryTable()
+  renderSyncTable()
 }
+
+
 
 function showSelectedValidator() {
   setTimeout(function () {
@@ -240,6 +243,56 @@ function showValidatorsInSearch(qty) {
   for (let i = 0; i < l.length; i++) {
     $("#selected-validators-input").prepend(l[l.length - (i + 1)])
   }
+}
+
+function renderSyncTable(){
+  console.log("aaaaaa")
+  if ($.fn.dataTable.isDataTable("#sync-table")) {
+    $("#sync-table").DataTable().destroy()
+  }
+  $('#sync-table').DataTable({
+    pagingType: 'input',
+    processing: true,
+    serverSide: true,
+    ordering: true,
+    order: [[1, 'desc']],
+    ajax: '/dashboard/data/sync' +getValidatorQueryString(),
+    lengthChange: false,
+    stateSave: true,
+    searching: false,
+    pageLength: 10,
+    language: {
+        paginate: {
+            previous: '<i class="fas fa-chevron-left"></i>',
+            next: '<i class="fas fa-chevron-right"></i>'
+        }
+    },
+    columnDefs: [
+      {
+        targets: 0,
+        data: '0',
+        "orderable": true
+      },
+      {
+        targets: 1,
+        data: '1',
+        "orderable": true
+      },
+      {
+        targets: 2,
+        data: '2',
+        "orderable": true
+      },
+      {
+        targets: 3,
+        data: '3',
+        "orderable": true
+      },
+    ],
+    drawCallback: function(settings) {
+        formatTimestamps()
+    },
+  })
 }
 
 function renderProposedHistoryTable(data) {
