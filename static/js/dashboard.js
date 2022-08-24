@@ -246,7 +246,6 @@ function showValidatorsInSearch(qty) {
 }
 
 function renderSyncTable(){
-  console.log("aaaaaa")
   if ($.fn.dataTable.isDataTable("#sync-table")) {
     $("#sync-table").DataTable().destroy()
   }
@@ -293,6 +292,9 @@ function renderSyncTable(){
         formatTimestamps()
     },
   })
+  $('#sync-table').on( 'draw.dt', function(){
+    console.log($('#sync-table').DataTable().data().any())
+  });
 }
 
 function renderProposedHistoryTable(data) {
