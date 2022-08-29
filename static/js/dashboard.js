@@ -733,8 +733,8 @@ $(document).ready(function () {
   }
 
   function renderDashboardInfo() {
-    var el = document.getElementById("dashboard-info")
-    el.innerText = `Found ${state.validatorsCount.pending} pending, ${state.validatorsCount.active_online + state.validatorsCount.active_offline} active and ${state.validatorsCount.exited} exited validators`
+    //var el = document.getElementById("dashboard-info")
+    //el.innerText = `Found ${state.validatorsCount.pending} pending, ${state.validatorsCount.active_online + state.validatorsCount.active_offline} active and ${state.validatorsCount.exited} exited validators`
 
     if (state.validators.length > 0) {
       showSelectedValidator()
@@ -915,10 +915,14 @@ $(document).ready(function () {
       // } else {
       //   appendBlocks(xBlocks.slice(0, state.validators.length * 3 - 1))
       // }
-      document.querySelector("#rewards-button").style.visibility = "visible"
-      document.querySelector("#bookmark-button").style.visibility = "visible"
-      document.querySelector("#copy-button").style.visibility = "visible"
-      document.querySelector("#clear-search").style.visibility = "visible"
+      $('#validators').on( 'draw.dt', function(){
+        //console.log($('#sync-table').DataTable().data().any())
+        document.querySelector("#rewards-button").style.visibility = "visible"
+        document.querySelector("#bookmark-button").style.visibility = "visible"
+        document.querySelector("#copy-button").style.visibility = "visible"
+        document.querySelector("#clear-search").style.visibility = "visible"
+      });
+      
 
       $.ajax({
         url: "/dashboard/data/earnings" + qryStr,

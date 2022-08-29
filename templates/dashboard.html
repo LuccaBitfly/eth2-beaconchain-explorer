@@ -193,45 +193,29 @@
             </div>
           </div>
         </div>
+        <div class="card h-100 py-3 px-3 mx-lg-2 card-body">
+          <span class="multiselect-border">
+            <ul id="selected-validators-input" class="multiselect">
+              <li class="input"><input class="typeahead-dashboard" type="text" placeholder="Add a Validator via Validator index, Graffiti or Eth1 Address" aria-label="Search" style="font-size:.9rem;" /></li>
+            </ul>
+            <div id="selected-validators-overview" class="d-none dropdown-selected-validators" style="position:absolute;overflow-y:auto;top:100%;margin-top:.3rem;max-height:280px;width:100%;border-radius:5px;box-shadow:0 .5rem 1rem rgba(0,0,0,.175);border: 1px solid rgba(255,255,255,.125);">
+              <!-- class="dropdown-selected-validators" -->
+
+              <ul id="selected-validators" class="multiselect val-modal"></ul>
+            </div>
+            <div style="width:2.2rem;" class="position-relative shadow-sm">
+              <button style="top:0;bottom:0;right:0;z-index:999;" id="selected-validators-input-button" type="button" class="position-absolute flex-column justify-content-center align-items-center btn btn-sm hbtn d-none" style="background-color:var(--bg-color-secondary);z-index:998;" data-toggle="modal" data-target="#validatorModal">
+                <i id="selected-validators-input-button-val" class="fas fa-male"></i>
+                <span style="font-size:.8rem;"></span>
+                <i id="selected-validators-input-button-box" class="fas fa-box-open fa-lg text-primary"></i>
+              </button>
+            </div>
+          </span>
+        </div>
         <div class="row align-items-stretch">
           <div class="col-lg-8 px-lg-2 my-2">
             <div class="card d-flex flex-column justify-content-center h-100 py-3 px-3 card-body">
-              <div class="multiselect-container" class="row border-bottom p-3">
-                <span style="display:flex;justify-content:flex-end;font-size:.9rem;padding:.1rem 0;">
-                  <button data-toggle="tooltip" title="Open in reward history" style="visibility:hidden;" id="rewards-button" class="btn btn-primary btn-sm m-1">
-                    <i class="far fa-money-bill-alt text-white" style="width:18px;"></i>
-                  </button>
-                  <button data-toggle="tooltip" title="Save all to Watchlist" style="visibility:hidden;" id="bookmark-button" type="button" class="btn btn-primary btn-sm m-1">
-                    <i class="far fa-bookmark text-white" style="width:18px;"></i>
-                  </button>
-                  <button data-toggle="tooltip" data-original-title="Copy Link to Dashboard" style="visibility:hidden;" id="copy-button" data-clipboard-text="https://beaconcha.in/dashboard" type="button" class="btn btn-primary btn-sm m-1">
-                    <i class="fa fa-copy text-white" style="width:18px;"></i>
-                  </button>
-                  <button data-toggle="tooltip" title="Clear Dashboard" style="visibility:hidden;" id="clear-search" type="button" class="btn btn-primary btn-sm m-1">
-                    <i class="fa fa-trash-alt text-white" style="width:18px;"></i>
-                  </button>
-                </span>
-                <span class="multiselect-border" style="margin:1rem 0;">
-                  <ul id="selected-validators-input" class="multiselect">
-                    <li class="input"><input class="typeahead-dashboard" type="text" placeholder="Add a Validator via Validator index, Graffiti or Eth1 Address" aria-label="Search" style="font-size:.9rem;" /></li>
-                  </ul>
-                  <div id="selected-validators-overview" class="d-none dropdown-selected-validators" style="position:absolute;overflow-y:auto;left:.5rem;right:calc(92px + .5rem);top:100%;margin-top:.3rem;max-height:280px;min-width:240px;border-radius:5px;box-shadow:0 .5rem 1rem rgba(0,0,0,.175);">
-                    <!-- class="dropdown-selected-validators" -->
-
-                    <ul id="selected-validators" class="multiselect val-modal"></ul>
-                  </div>
-                  <div style="width:2.2rem;" class="position-relative shadow-sm">
-                    <button style="top:0;bottom:0;right:0;z-index:999;" id="selected-validators-input-button" type="button" class="position-absolute flex-column justify-content-center align-items-center btn btn-sm hbtn d-none" style="background-color:var(--bg-color-secondary);z-index:998;" data-toggle="modal" data-target="#validatorModal">
-                      <i id="selected-validators-input-button-val" class="fas fa-male"></i>
-                      <span style="font-size:.8rem;"></span>
-                      <i id="selected-validators-input-button-box" class="fas fa-box-open fa-lg text-primary"></i>
-                    </button>
-                  </div>
-                </span>
-                <div style="font-weight:300;font-size:1rem;display:flex;justify-content:center" class="pb-2">
-                  <span id="dashboard-info">Found 0 pending, 0 active and 0 exited validators</span>
-                </div>
-              </div>
+              
             </div>
           </div>
           <div class="col-lg-4 px-lg-2 my-2">
@@ -270,7 +254,10 @@
         </div>
         <div class="row align-items-stretch">
           <div class="col-lg-8 px-lg-2 my-2">
-            <div class="card h-100 px-0 py-0 card-body" style="min-height:600px;">
+            <div class="card h-100 px-0 pb-0 pt-3 card-body" style="min-height:600px;">
+              <div class="d-flex justify-content-center align-items-center border-bottom">
+                <h4>Overview</h4>
+              </div>
               <ul style="width:100%;margin-top:-1px;margin-bottom:1rem;display:flex;justify-content:space-between" class="nav nav-tabs" id="dashChartTabs" role="tablist">
                 <li class="nav-item dashboard-table-nav" style="flex:1;">
                   <a class="nav-link show active" id="validators-tab" data-toggle="tab" href="#validators-table" role="tab" aria-controls="validators" aria-selected="true" style="text-align:center;white-space:nowrap;">
@@ -293,6 +280,27 @@
               </ul>
               <div class="tab-content h-100" id="dashTabContent">
                 <div id="validators-table" class="tab-pane fade h-100 show active" role="tabpanel" aria-labelledby="validators-tab">
+                  <div class="multiselect-container" class="row border-bottom p-3">
+                    <span style="display:flex;justify-content:flex-start;font-size:.9rem;">
+                      <button data-toggle="tooltip" title="Open in reward history" style="visibility:hidden;" id="rewards-button" class="btn btn-primary btn-sm mr-1">
+                        <i class="far fa-money-bill-alt text-white" style="width:18px;"></i>
+                      </button>
+                      <button data-toggle="tooltip" title="Save all to Watchlist" style="visibility:hidden;" id="bookmark-button" type="button" class="btn btn-primary btn-sm mr-1">
+                        <i class="far fa-bookmark text-white" style="width:18px;"></i>
+                      </button>
+                      <button data-toggle="tooltip" data-original-title="Copy Link to Dashboard" style="visibility:hidden;" id="copy-button" data-clipboard-text="https://beaconcha.in/dashboard" type="button" class="btn btn-primary btn-sm mr-1">
+                        <i class="fa fa-copy text-white" style="width:18px;"></i>
+                      </button>
+                      <button data-toggle="tooltip" title="Clear Dashboard" style="visibility:hidden;" id="clear-search" type="button" class="btn btn-primary btn-sm">
+                        <i class="fa fa-trash-alt text-white" style="width:18px;"></i>
+                      </button>
+                    </span>
+                    <!--
+                    <div style="font-weight:300;font-size:1rem;display:flex;justify-content:center" class="pb-2">
+                      <span id="dashboard-info">Found 0 pending, 0 active and 0 exited validators</span>
+                    </div>
+                    -->
+                  </div>
                   <div id="validator-art" class="d-flex align-items-center justify-content-center p-5">
                     <svg style="width:60%;height:auto;" id="5e1838a0-6e06-4e3f-aa75-de6d8e6cdfa0" data-name="Layer 1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 1007.04 858">
                       <defs>
@@ -360,7 +368,7 @@
                     </svg>
                   </div>
                   <div class="dashboard-table px-0 mx-0" id="validators-table-holder" style="height:100%;">
-                    <div class="table-responsive proposals-table py-2" style="height:100%;">
+                    <div class="table-responsive proposals-table pb-2" style="height:100%;">
                       <table class="table" id="validators" width="100%" style="margin-top:.5rem !important;">
                         <thead>
                           <tr>
@@ -563,7 +571,7 @@
                     <!--<div class="d-flex justify-content-center align-items-center p-1 mt-2">
                     <span>Proposal History</span>
                   </div>-->
-                    <div class="table-responsive pt-2 pb-2">
+                    <div class="table-responsive pb-2">
                       <table class="table" id="proposals-table" width="100%">
                         <thead>
                           <tr>
@@ -583,7 +591,7 @@
           <div class="col-lg-4 px-lg-2 d-flex align-items-center my-2">
             <div class="card h-100 py-3 px-0 card-body">
               <div class="d-flex justify-content-center align-items-center border-bottom">
-                <span class="h4">History <i class="fas fa-male fa-sm mr-1"></i><span id="dash-validator-history-index" style="font-size:24px;"></span></span>
+                <span class="h4">History Validator <span id="dash-validator-history-index" style="font-size:24px;"></span></span>
               </div>
               <div id="dash-validator-history-index-div" class="justify-content-around align-items-center p-2 d-none validator-history-index" style="height:53px;">
                 <div class="mx-2">
