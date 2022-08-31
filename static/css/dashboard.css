@@ -171,7 +171,7 @@ ul.multiselect input:focus {
 }
 
 .dashboard-container > div {
-  margin: .5rem auto;
+  margin: 0;
 }
  
 .dashboard-header {
@@ -486,6 +486,10 @@ ul.multiselect input:focus {
   .proposal-switch {
     position: relative;
   }
+}
+
+@media screen and (max-width: 1450px) {
+  .nav-tabs .tab-text.dashboard-table-nav-text { display: inline }
 }
 
 @media screen and (max-width: 450px) {

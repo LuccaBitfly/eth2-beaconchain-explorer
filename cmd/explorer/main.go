@@ -281,6 +281,7 @@ func main() {
 			router.HandleFunc("/validator/{pubkey}/add", handlers.UserValidatorWatchlistAdd).Methods("POST")
 			router.HandleFunc("/validator/{pubkey}/remove", handlers.UserValidatorWatchlistRemove).Methods("POST")
 			router.HandleFunc("/validator/{index}/stats", handlers.ValidatorStatsTable).Methods("GET")
+			router.HandleFunc("/validator/{index}/status", handlers.ValidatorStatus).Methods("GET")
 			router.HandleFunc("/validators", handlers.Validators).Methods("GET")
 			router.HandleFunc("/validators/data", handlers.ValidatorsData).Methods("GET")
 			router.HandleFunc("/validators/slashings", handlers.ValidatorsSlashings).Methods("GET")

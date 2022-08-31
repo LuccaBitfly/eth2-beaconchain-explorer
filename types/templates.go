@@ -275,7 +275,7 @@ type ValidatorsPageDataValidators struct {
 type ValidatorPageData struct {
 	Epoch                               uint64 `db:"epoch"`
 	ValidatorIndex                      uint64 `db:"validatorindex"`
-	PublicKey                           []byte `db:"pubkey"`
+	PublicKey                           []byte `db:"pubkey" json:"-"`
 	WithdrawableEpoch                   uint64 `db:"withdrawableepoch"`
 	CurrentBalance                      uint64 `db:"balance"`
 	BalanceActivation                   uint64 `db:"balanceactivation"`
@@ -289,11 +289,11 @@ type ValidatorPageData struct {
 	ActivationEligibilityEpoch          uint64         `db:"activationeligibilityepoch"`
 	ActivationEpoch                     uint64         `db:"activationepoch"`
 	ExitEpoch                           uint64         `db:"exitepoch"`
-	Index                               uint64         `db:"index"`
-	LastAttestationSlot                 *uint64        `db:"lastattestationslot"`
-	Name                                string         `db:"name"`
-	Pool                                string         `db:"pool"`
-	Tags                                pq.StringArray `db:"tags"`
+	Index                               uint64         `db:"index" json:"-"`
+	LastAttestationSlot                 *uint64        `db:"lastattestationslot" json:"-"`
+	Name                                string         `db:"name" json:"-"`
+	Pool                                string         `db:"pool" json:"-"`
+	Tags                                pq.StringArray `db:"tags" json:"-"`
 	WithdrawableTs                      time.Time
 	ActivationEligibilityTs             time.Time
 	ActivationTs                        time.Time
@@ -310,45 +310,45 @@ type ValidatorPageData struct {
 	MissedAttestationsCount             uint64
 	OrphanedAttestationsCount           uint64
 	UnmissedAttestationsPercentage      float64 // missed/(executed+orphaned)
-	StatusProposedCount                 uint64
-	StatusMissedCount                   uint64
+	StatusProposedCount                 uint64  `json:"-"`
+	StatusMissedCount                   uint64  `json:"-"`
 	DepositsCount                       uint64
 	SlashingsCount                      uint64
-	PendingCount                        uint64
+	PendingCount                        uint64 `json:"-"`
 	SyncCount                           uint64
 	ScheduledSyncCount                  uint64
 	ParticipatedSyncCount               uint64
 	MissedSyncCount                     uint64
 	OrphanedSyncCount                   uint64
 	UnmissedSyncPercentage              float64 // missed/(participated+orphaned)
-	Income1d                            int64
-	Income7d                            int64
-	Income31d                           int64
-	Rank7d                              int64 `db:"rank7d"`
-	RankCount                           int64 `db:"rank_count"`
+	Income1d                            int64   `json:"-"`
+	Income7d                            int64   `json:"-"`
+	Income31d                           int64   `json:"-"`
+	Rank7d                              int64   `db:"rank7d"`
+	RankCount                           int64   `db:"rank_count"`
 	RankPercentage                      float64
-	Apr                                 float64
-	Proposals                           [][]uint64
-	IncomeHistoryChartData              []*ChartDataPoint
+	Apr                                 float64           `json:"-"`
+	Proposals                           [][]uint64        `json:"-"`
+	IncomeHistoryChartData              []*ChartDataPoint `json:"-"`
 	Deposits                            *ValidatorDeposits
-	Eth1DepositAddress                  []byte
-	FlashMessage                        string
-	Watchlist                           []*TaggedValidators
-	SubscriptionFlash                   []interface{}
-	User                                *User
-	AverageAttestationInclusionDistance float64
+	Eth1DepositAddress                  []byte              `json:"-"`
+	FlashMessage                        string              `json:"-"`
+	Watchlist                           []*TaggedValidators `json:"-"`
+	SubscriptionFlash                   []interface{}       `json:"-"`
+	User                                *User               `json:"-"`
+	AverageAttestationInclusionDistance float64             `json:"-"`
 	AttestationInclusionEffectiveness   float64
-	CsrfField                           template.HTML
-	NetworkStats                        *IndexPageData
-	ChurnRate                           uint64
+	CsrfField                           template.HTML  `json:"-"`
+	NetworkStats                        *IndexPageData `json:"-"`
+	ChurnRate                           uint64         `json:"-"`
 	QueuePosition                       uint64
 	EstimatedActivationTs               time.Time
 	EstimatedActivationEpoch            uint64
 	InclusionDelay                      int64
 	CurrentAttestationStreak            uint64
 	LongestAttestationStreak            uint64
-	IsRocketpool                        bool
-	Rocketpool                          *RocketpoolValidatorPageData
+	IsRocketpool                        bool                         `json:"-"`
+	Rocketpool                          *RocketpoolValidatorPageData `json:"-"`
 }
 
 type RocketpoolValidatorPageData struct {
@@ -988,9 +988,9 @@ type EthTwoDepositData struct {
 }
 
 type ValidatorDeposits struct {
-	Eth1Deposits      []Eth1Deposit
+	Eth1Deposits      []Eth1Deposit `json:"-"`
 	LastEth1DepositTs int64
-	Eth2Deposits      []Eth2Deposit
+	Eth2Deposits      []Eth2Deposit `json:"-"`
 }
 
 type MyCryptoSignature struct {

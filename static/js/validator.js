@@ -2,7 +2,6 @@ function setValidatorStatus(state, activationEpoch) {
   // deposited, deposited_valid, deposited_invalid, pending, active_online, active_offline, exiting_online, exiting_offline, slashing_online, slashing_offline, exited, slashed
   // we cans set elements to active, failed and done
   var status = state
-  console.log(status)
 
   var depositToPending = document.querySelector(".validator__lifecycle-progress.validator__lifecycle-deposited")
   var pendingToActive = document.querySelector(".validator__lifecycle-progress.validator__lifecycle-pending")
@@ -18,6 +17,26 @@ function setValidatorStatus(state, activationEpoch) {
   var activeOnlineSet = new Set(["active_online", "exiting_online", "slashing_online"])
   var activeOfflineSet = new Set(["active_offline", "exiting_offline", "slashing_offline"])
   var activeDoneSet = new Set(["exited", "slashed"])
+
+  depositedNode.classList.remove("active")
+  depositedNode.classList.remove("failed")
+  depositedNode.classList.remove("done")
+  depositToPending.classList.remove("complete")
+  depositToPending.classList.remove("active")
+  pendingNode.classList.remove("done")
+  pendingNode.classList.remove("active")
+  pendingToActive.classList.remove("complete")
+  pendingToActive.classList.remove("active")
+  activeNode.classList.remove("done")
+  activeNode.classList.remove("online")
+  activeNode.classList.remove("offline")
+  activeNode.classList.remove("active")
+  activeToExited.classList.remove("complete")
+  activeToExited.classList.remove("active")
+  exitedNode.classList.remove("active")
+  exitedNode.classList.remove("slashed")
+  exitedNode.classList.remove("failed")
+  exitedNode.classList.remove("done")
 
   if (depositedDoneSet.has(status)) {
     depositedNode.classList.add("done")

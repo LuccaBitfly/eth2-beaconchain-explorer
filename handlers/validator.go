@@ -53,26 +53,6 @@ func Validator(w http.ResponseWriter, r *http.Request) {
 
 	validatorPageData := types.ValidatorPageData{}
 
-	stats := services.GetLatestStats()
-	churnRate := stats.ValidatorChurnLimit
-	if churnRate == nil {
-		churnRate = new(uint64)
-	}
-
-	if *churnRate == 0 {
-		*churnRate = 4
-		logger.Warning("Churn rate not set in config using 4 as default please set minPerEpochChurnLimit")
-	}
-	validatorPageData.ChurnRate = *churnRate
-
-	pendingCount := stats.PendingValidatorCount
-	if pendingCount == nil {
-		pendingCount = new(uint64)
-	}
-
-	validatorPageData.PendingCount = *pendingCount
-	validatorPageData.InclusionDelay = int64((utils.Config.Chain.Config.Eth1FollowDistance*utils.Config.Chain.Config.SecondsPerEth1Block+utils.Config.Chain.Config.SecondsPerSlot*utils.Config.Chain.Config.SlotsPerEpoch*utils.Config.Chain.Config.EpochsPerEth1VotingPeriod)/3600) + 1
-
 	data := InitPageData(w, r, "validators", "/validators", "")
 	data.HeaderAd = true
 	validatorPageData.NetworkStats = services.LatestIndexPageData()
@@ -236,9 +216,6 @@ func Validator(w http.ResponseWriter, r *http.Request) {
 			validators.activationeligibilityepoch,
 			validators.activationepoch,
 			validators.exitepoch,
-			validators.lastattestationslot,
-			COALESCE(validator_names.name, '') AS name,
-			COALESCE(validator_pool.pool, '') AS pool,
 			COALESCE(validators.balance, 0) AS balance,
 			COALESCE(validator_performance.rank7d, 0) AS rank7d,
 			COALESCE(validator_performance_count.total_count, 0) AS rank_count,
@@ -268,21 +245,7 @@ func Validator(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if validatorPageData.Pool != "" {
-		if validatorPageData.Name == "" {
-			validatorPageData.Name = fmt.Sprintf("Pool: %s", validatorPageData.Pool)
-		} else {
-			validatorPageData.Name += fmt.Sprintf(" / Pool: %s", validatorPageData.Pool)
-		}
-	}
-
-	if validatorPageData.Rank7d > 0 && validatorPageData.RankCount > 0 {
-		validatorPageData.RankPercentage = float64(validatorPageData.Rank7d) / float64(validatorPageData.RankCount)
-	}
-
-	validatorPageData.Epoch = services.LatestEpoch()
-	validatorPageData.Index = index
-	if err != nil {
+	/* if err != nil {
 		logger.Errorf("error retrieving validator public key %v: %v", index, err)
 
 		err := validatorNotFoundTemplate.ExecuteTemplate(w, "layout", data)
@@ -293,6 +256,19 @@ func Validator(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		return
+	} */
+
+	deposits, err := db.GetValidatorDeposits(validatorPageData.PublicKey)
+	if err != nil {
+		logger.Errorf("error getting validator-deposits from db: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	err = setValidatorPageData(&validatorPageData, deposits)
+	if err != nil {
+		logger.Error(err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
 	}
 
 	filter := db.WatchlistFilter{
@@ -311,137 +287,6 @@ func Validator(w http.ResponseWriter, r *http.Request) {
 	}
 
 	validatorPageData.Watchlist = watchlist
-
-	deposits, err := db.GetValidatorDeposits(validatorPageData.PublicKey)
-	if err != nil {
-		logger.Errorf("error getting validator-deposits from db: %v", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		return
-	}
-	validatorPageData.Deposits = deposits
-	validatorPageData.DepositsCount = uint64(len(deposits.Eth1Deposits))
-
-	for _, deposit := range validatorPageData.Deposits.Eth1Deposits {
-		if deposit.ValidSignature {
-			validatorPageData.Eth1DepositAddress = deposit.FromAddress
-			break
-		}
-	}
-
-	validatorPageData.ActivationEligibilityTs = utils.EpochToTime(validatorPageData.ActivationEligibilityEpoch)
-	validatorPageData.ActivationTs = utils.EpochToTime(validatorPageData.ActivationEpoch)
-	validatorPageData.ExitTs = utils.EpochToTime(validatorPageData.ExitEpoch)
-	validatorPageData.WithdrawableTs = utils.EpochToTime(validatorPageData.WithdrawableEpoch)
-
-	if validatorPageData.ActivationEpoch > 100_000_000 {
-		queueAhead, err := db.GetQueueAheadOfValidator(validatorPageData.Index)
-		if err != nil {
-			logger.WithError(err).Warnf("failed to retrieve queue ahead of validator %v: %v", validatorPageData.ValidatorIndex, err)
-			http.Error(w, "Internal server error", http.StatusInternalServerError)
-		}
-		validatorPageData.QueuePosition = queueAhead + 1
-		epochsToWait := queueAhead / *churnRate
-		// calculate dequeue epoch
-		estimatedActivationEpoch := validatorPageData.Epoch + epochsToWait + 1
-		// add activation offset
-		estimatedActivationEpoch += utils.Config.Chain.Config.MaxSeedLookahead + 1
-		validatorPageData.EstimatedActivationEpoch = estimatedActivationEpoch
-		estimatedDequeueTs := utils.EpochToTime(estimatedActivationEpoch)
-		validatorPageData.EstimatedActivationTs = estimatedDequeueTs
-	}
-
-	proposals := []struct {
-		Slot   uint64
-		Status uint64
-	}{}
-
-	err = db.ReaderDb.Select(&proposals, "SELECT slot, status FROM blocks WHERE proposer = $1 ORDER BY slot", index)
-	if err != nil {
-		logger.Errorf("error retrieving block-proposals: %v", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		return
-	}
-
-	validatorPageData.Proposals = make([][]uint64, len(proposals))
-	for i, b := range proposals {
-		validatorPageData.Proposals[i] = []uint64{
-			uint64(utils.SlotToTime(b.Slot).Unix()),
-			b.Status,
-		}
-		if b.Status == 0 {
-			validatorPageData.ScheduledBlocksCount++
-		} else if b.Status == 1 {
-			validatorPageData.ProposedBlocksCount++
-		} else if b.Status == 2 {
-			validatorPageData.MissedBlocksCount++
-		} else if b.Status == 3 {
-			validatorPageData.OrphanedBlocksCount++
-		}
-	}
-
-	validatorPageData.BlocksCount = uint64(len(proposals))
-	if validatorPageData.BlocksCount > 0 {
-		validatorPageData.UnmissedBlocksPercentage = float64(validatorPageData.BlocksCount-validatorPageData.MissedBlocksCount) / float64(len(proposals))
-	} else {
-		validatorPageData.UnmissedBlocksPercentage = 1.0
-	}
-
-	// logger.Infof("propoals data retrieved, elapsed: %v", time.Since(start))
-	// start = time.Now()
-
-	// Every validator is scheduled to issue an attestation once per epoch
-	// Hence we can calculate the number of attestations using the current epoch and the activation epoch
-	// Special care needs to be take for exited and pending validators
-	validatorPageData.AttestationsCount = validatorPageData.Epoch - validatorPageData.ActivationEpoch + 1
-	if validatorPageData.ActivationEpoch > validatorPageData.Epoch {
-		validatorPageData.AttestationsCount = 0
-	}
-	if validatorPageData.ExitEpoch != 9223372036854775807 {
-		validatorPageData.AttestationsCount = validatorPageData.ExitEpoch - validatorPageData.ActivationEpoch
-	}
-
-	var lastStatsDay uint64
-	err = db.ReaderDb.Get(&lastStatsDay, "select coalesce(max(day),0) from validator_stats")
-	if err != nil {
-		logger.Errorf("error retrieving lastStatsDay: %v", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		return
-	}
-
-	if validatorPageData.AttestationsCount > 0 {
-		// get attestationStats from validator_stats
-		attestationStats := struct {
-			MissedAttestations   uint64 `db:"missed_attestations"`
-			OrphanedAttestations uint64 `db:"orphaned_attestations"`
-		}{}
-		if lastStatsDay > 0 {
-			err = db.ReaderDb.Get(&attestationStats, "select coalesce(sum(missed_attestations), 0) as missed_attestations, coalesce(sum(orphaned_attestations), 0) as orphaned_attestations from validator_stats where validatorindex = $1", index)
-			if err != nil {
-				logger.Errorf("error retrieving validator attestationStats: %v", err)
-				http.Error(w, "Internal server error", http.StatusInternalServerError)
-				return
-			}
-		}
-
-		// add attestationStats that are not yet in validator_stats
-		attestationStatsNotInStats := struct {
-			MissedAttestations   uint64 `db:"missed_attestations"`
-			OrphanedAttestations uint64 `db:"orphaned_attestations"`
-		}{}
-		err = db.ReaderDb.Get(&attestationStatsNotInStats, "select coalesce(sum(case when status = 0 then 1 else 0 end), 0) as missed_attestations, coalesce(sum(case when status = 3 then 1 else 0 end), 0) as orphaned_attestations from attestation_assignments_p where week >= $1/7 and epoch >= ($1+1)*225 and epoch < $2 and validatorindex = $3", lastStatsDay, services.LatestEpoch(), index)
-		if err != nil {
-			logger.Errorf("error retrieving validator attestationStatsAfterLastStatsDay: %v", err)
-			http.Error(w, "Internal server error", http.StatusInternalServerError)
-			return
-		}
-		validatorPageData.MissedAttestationsCount = attestationStats.MissedAttestations + attestationStatsNotInStats.MissedAttestations
-		validatorPageData.OrphanedAttestationsCount = attestationStats.OrphanedAttestations + attestationStatsNotInStats.OrphanedAttestations
-		validatorPageData.ExecutedAttestationsCount = validatorPageData.AttestationsCount - validatorPageData.MissedAttestationsCount - validatorPageData.OrphanedAttestationsCount
-		validatorPageData.UnmissedAttestationsPercentage = float64(validatorPageData.AttestationsCount-validatorPageData.MissedAttestationsCount) / float64(validatorPageData.AttestationsCount)
-	}
-
-	// logger.Infof("attestations data retrieved, elapsed: %v", time.Since(start))
-	// start = time.Now()
 
 	var incomeHistory []*types.ValidatorIncomeHistory
 	err = db.ReaderDb.Select(&incomeHistory, "select day, coalesce(start_balance, 0) as start_balance, coalesce(end_balance, 0) as end_balance, coalesce(deposits_amount, 0) as deposits_amount from validator_stats where validatorindex = $1 order by day;", index)
@@ -504,11 +349,9 @@ func Validator(w http.ResponseWriter, r *http.Request) {
 	// logger.Infof("balance history retrieved, elapsed: %v", time.Since(start))
 	// start = time.Now()
 
-	earnings, err := GetValidatorEarnings([]uint64{index}, GetCurrency(r))
+	earnings, err := GetValidatorEarnings([]uint64{index}, currency)
 	if err != nil {
-		logger.Errorf("error retrieving validator earnings: %v", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		return
+		fmt.Errorf("error retrieving validator earnings: %v", err)
 	}
 
 	validatorPageData.Income1d = earnings.LastDay
@@ -518,129 +361,6 @@ func Validator(w http.ResponseWriter, r *http.Request) {
 
 	// logger.Infof("income data retrieved, elapsed: %v", time.Since(start))
 	// start = time.Now()
-
-	if validatorPageData.Slashed {
-		var slashingInfo struct {
-			Slot    uint64
-			Slasher uint64
-			Reason  string
-		}
-		err = db.ReaderDb.Get(&slashingInfo,
-			`select block_slot as slot, proposer as slasher, 'Attestation Violation' as reason
-				from blocks_attesterslashings a1 left join blocks b1 on b1.slot = a1.block_slot
-				where b1.status = '1' and $1 = ANY(a1.attestation1_indices) and $1 = ANY(a1.attestation2_indices)
-			union all
-			select block_slot as slot, proposer as slasher, 'Proposer Violation' as reason
-				from blocks_proposerslashings a2 left join blocks b2 on b2.slot = a2.block_slot
-				where b2.status = '1' and a2.proposerindex = $1
-			limit 1`,
-			index)
-		if err != nil {
-			logger.Errorf("error retrieving validator slashing info: %v", err)
-			http.Error(w, "Internal server error", http.StatusInternalServerError)
-			return
-		}
-		validatorPageData.SlashedBy = slashingInfo.Slasher
-		validatorPageData.SlashedAt = slashingInfo.Slot
-		validatorPageData.SlashedFor = slashingInfo.Reason
-	}
-
-	err = db.ReaderDb.Get(&validatorPageData.SlashingsCount, `select COALESCE(sum(attesterslashingscount) + sum(proposerslashingscount), 0) from blocks where blocks.proposer = $1 and blocks.status = '1'`, index)
-	if err != nil {
-		logger.Errorf("error retrieving slashings-count: %v", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		return
-	}
-
-	// logger.Infof("slashing data retrieved, elapsed: %v", time.Since(start))
-	// start = time.Now()
-
-	err = db.ReaderDb.Get(&validatorPageData.AverageAttestationInclusionDistance, `
-		SELECT COALESCE(
-			AVG(1 + inclusionslot - COALESCE((
-				SELECT MIN(slot)
-				FROM blocks
-				WHERE slot > aa.attesterslot AND blocks.status = '1'
-			), 0)
-		), 0)
-		FROM attestation_assignments_p aa
-		INNER JOIN blocks ON blocks.slot = aa.inclusionslot AND blocks.status <> '3'
-		WHERE aa.week >= $1 / 1575 AND aa.epoch > $1 AND aa.validatorindex = $2 AND aa.inclusionslot > 0
-		`, int64(validatorPageData.Epoch)-100, index)
-	if err != nil {
-		logger.Errorf("error retrieving AverageAttestationInclusionDistance: %v", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		return
-	}
-
-	if validatorPageData.AverageAttestationInclusionDistance > 0 {
-		validatorPageData.AttestationInclusionEffectiveness = 1.0 / validatorPageData.AverageAttestationInclusionDistance * 100
-	}
-
-	var attestationStreaks []struct {
-		Length uint64
-	}
-	err = db.ReaderDb.Select(&attestationStreaks, `select greatest(0,length) as length from validator_attestation_streaks where validatorindex = $1 and status = 1 order by start desc`, index)
-	if err != nil {
-		logger.Errorf("error retrieving AttestationStreaks: %v", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		return
-	}
-	if len(attestationStreaks) > 1 {
-		validatorPageData.CurrentAttestationStreak = attestationStreaks[0].Length
-		validatorPageData.LongestAttestationStreak = attestationStreaks[1].Length
-	} else if len(attestationStreaks) > 0 {
-		validatorPageData.CurrentAttestationStreak = attestationStreaks[0].Length
-		validatorPageData.LongestAttestationStreak = attestationStreaks[0].Length
-	}
-
-	// logger.Infof("effectiveness data retrieved, elapsed: %v", time.Since(start))
-	// start = time.Now()
-
-	err = db.ReaderDb.Get(&validatorPageData.SyncCount, `SELECT count(*)*$1 FROM sync_committees WHERE validatorindex = $2`, utils.Config.Chain.Config.EpochsPerSyncCommitteePeriod*utils.Config.Chain.Config.SlotsPerEpoch, index)
-	if err != nil {
-		logger.Errorf("error retrieving syncCount for validator %v: %v", index, err)
-		http.Error(w, "Internal server error", 503)
-		return
-	}
-
-	if validatorPageData.SyncCount > 0 {
-		// get syncStats from validator_stats
-		syncStats := struct {
-			ParticipatedSync uint64 `db:"participated_sync"`
-			MissedSync       uint64 `db:"missed_sync"`
-			OrphanedSync     uint64 `db:"orphaned_sync"`
-		}{}
-		if lastStatsDay > 0 {
-			err = db.ReaderDb.Get(&syncStats, "select coalesce(sum(participated_sync), 0) as participated_sync, coalesce(sum(missed_sync), 0) as missed_sync, coalesce(sum(orphaned_sync), 0) as orphaned_sync from validator_stats where validatorindex = $1", index)
-			if err != nil {
-				logger.Errorf("error retrieving validator syncStats: %v", err)
-				http.Error(w, "Internal server error", http.StatusInternalServerError)
-				return
-			}
-		}
-
-		// add syncStats that are not yet in validator_stats
-		syncStatsNotInStats := struct {
-			ScheduledSync    uint64 `db:"scheduled_sync"`
-			ParticipatedSync uint64 `db:"participated_sync"`
-			MissedSync       uint64 `db:"missed_sync"`
-			OrphanedSync     uint64 `db:"orphaned_sync"`
-		}{}
-		err = db.ReaderDb.Get(&syncStatsNotInStats, "select coalesce(sum(case when status = 0 then 1 else 0 end), 0) as scheduled_sync, coalesce(sum(case when status = 1 then 1 else 0 end), 0) as participated_sync, coalesce(sum(case when status = 2 then 1 else 0 end), 0) as missed_sync, coalesce(sum(case when status = 3 then 1 else 0 end), 0) as orphaned_sync from sync_assignments_p where week >= $1/7 and slot >= ($1+1)*225*32 and validatorindex = $2", lastStatsDay, index)
-		if err != nil {
-			logger.Errorf("error retrieving validator syncStatsAfterLastStatsDay: %v", err)
-			http.Error(w, "Internal server error", http.StatusInternalServerError)
-			return
-		}
-
-		validatorPageData.ScheduledSyncCount = syncStatsNotInStats.ScheduledSync
-		validatorPageData.ParticipatedSyncCount = syncStats.ParticipatedSync + syncStatsNotInStats.ParticipatedSync
-		validatorPageData.MissedSyncCount = syncStats.MissedSync + syncStatsNotInStats.MissedSync
-		validatorPageData.OrphanedSyncCount = syncStats.OrphanedSync + syncStatsNotInStats.OrphanedSync
-
-		validatorPageData.UnmissedSyncPercentage = float64(validatorPageData.SyncCount-validatorPageData.MissedSyncCount) / float64(validatorPageData.SyncCount)
-	}
 
 	// add rocketpool-data if available
 	validatorPageData.Rocketpool = &types.RocketpoolValidatorPageData{}
@@ -683,6 +403,270 @@ func Validator(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
+}
+
+func setValidatorPageData(validatorPageData *types.ValidatorPageData, deposits *types.ValidatorDeposits) error {
+	stats := services.GetLatestStats()
+	churnRate := stats.ValidatorChurnLimit
+	if churnRate == nil {
+		churnRate = new(uint64)
+	}
+
+	if *churnRate == 0 {
+		*churnRate = 4
+		logger.Warning("Churn rate not set in config using 4 as default please set minPerEpochChurnLimit")
+	}
+	validatorPageData.ChurnRate = *churnRate
+
+	pendingCount := stats.PendingValidatorCount
+	if pendingCount == nil {
+		pendingCount = new(uint64)
+	}
+
+	validatorPageData.PendingCount = *pendingCount
+	validatorPageData.InclusionDelay = int64((utils.Config.Chain.Config.Eth1FollowDistance*utils.Config.Chain.Config.SecondsPerEth1Block+utils.Config.Chain.Config.SecondsPerSlot*utils.Config.Chain.Config.SlotsPerEpoch*utils.Config.Chain.Config.EpochsPerEth1VotingPeriod)/3600) + 1
+	index := validatorPageData.ValidatorIndex
+	if validatorPageData.Pool != "" {
+		if validatorPageData.Name == "" {
+			validatorPageData.Name = fmt.Sprintf("Pool: %s", validatorPageData.Pool)
+		} else {
+			validatorPageData.Name += fmt.Sprintf(" / Pool: %s", validatorPageData.Pool)
+		}
+	}
+
+	if validatorPageData.Rank7d > 0 && validatorPageData.RankCount > 0 {
+		validatorPageData.RankPercentage = float64(validatorPageData.Rank7d) / float64(validatorPageData.RankCount)
+	}
+
+	validatorPageData.Epoch = services.LatestEpoch()
+	validatorPageData.Index = index
+
+	validatorPageData.Deposits = deposits
+	validatorPageData.DepositsCount = uint64(len(deposits.Eth1Deposits))
+
+	for _, deposit := range validatorPageData.Deposits.Eth1Deposits {
+		if deposit.ValidSignature {
+			validatorPageData.Eth1DepositAddress = deposit.FromAddress
+			break
+		}
+	}
+
+	validatorPageData.ActivationEligibilityTs = utils.EpochToTime(validatorPageData.ActivationEligibilityEpoch)
+	validatorPageData.ActivationTs = utils.EpochToTime(validatorPageData.ActivationEpoch)
+	validatorPageData.ExitTs = utils.EpochToTime(validatorPageData.ExitEpoch)
+	validatorPageData.WithdrawableTs = utils.EpochToTime(validatorPageData.WithdrawableEpoch)
+
+	if validatorPageData.ActivationEpoch > 100_000_000 {
+		queueAhead, err := db.GetQueueAheadOfValidator(validatorPageData.Index)
+		if err != nil {
+			return fmt.Errorf("failed to retrieve queue ahead of validator %v: %v", validatorPageData.ValidatorIndex, err)
+		}
+		validatorPageData.QueuePosition = queueAhead + 1
+		epochsToWait := queueAhead / validatorPageData.ChurnRate
+		// calculate dequeue epoch
+		estimatedActivationEpoch := validatorPageData.Epoch + epochsToWait + 1
+		// add activation offset
+		estimatedActivationEpoch += utils.Config.Chain.Config.MaxSeedLookahead + 1
+		validatorPageData.EstimatedActivationEpoch = estimatedActivationEpoch
+		estimatedDequeueTs := utils.EpochToTime(estimatedActivationEpoch)
+		validatorPageData.EstimatedActivationTs = estimatedDequeueTs
+	}
+
+	proposals := []struct {
+		Slot   uint64
+		Status uint64
+	}{}
+
+	err := db.ReaderDb.Select(&proposals, "SELECT slot, status FROM blocks WHERE proposer = $1 ORDER BY slot", index)
+	if err != nil {
+		return fmt.Errorf("error retrieving block-proposals: %v", err)
+	}
+
+	validatorPageData.Proposals = make([][]uint64, len(proposals))
+	for i, b := range proposals {
+		validatorPageData.Proposals[i] = []uint64{
+			uint64(utils.SlotToTime(b.Slot).Unix()),
+			b.Status,
+		}
+		if b.Status == 0 {
+			validatorPageData.ScheduledBlocksCount++
+		} else if b.Status == 1 {
+			validatorPageData.ProposedBlocksCount++
+		} else if b.Status == 2 {
+			validatorPageData.MissedBlocksCount++
+		} else if b.Status == 3 {
+			validatorPageData.OrphanedBlocksCount++
+		}
+	}
+
+	validatorPageData.BlocksCount = uint64(len(proposals))
+	if validatorPageData.BlocksCount > 0 {
+		validatorPageData.UnmissedBlocksPercentage = float64(validatorPageData.BlocksCount-validatorPageData.MissedBlocksCount) / float64(len(proposals))
+	} else {
+		validatorPageData.UnmissedBlocksPercentage = 1.0
+	}
+
+	// logger.Infof("propoals data retrieved, elapsed: %v", time.Since(start))
+	// start = time.Now()
+
+	// Every validator is scheduled to issue an attestation once per epoch
+	// Hence we can calculate the number of attestations using the current epoch and the activation epoch
+	// Special care needs to be take for exited and pending validators
+	validatorPageData.AttestationsCount = validatorPageData.Epoch - validatorPageData.ActivationEpoch + 1
+	if validatorPageData.ActivationEpoch > validatorPageData.Epoch {
+		validatorPageData.AttestationsCount = 0
+	}
+	if validatorPageData.ExitEpoch != 9223372036854775807 {
+		validatorPageData.AttestationsCount = validatorPageData.ExitEpoch - validatorPageData.ActivationEpoch
+	}
+
+	var lastStatsDay uint64
+	err = db.ReaderDb.Get(&lastStatsDay, "select coalesce(max(day),0) from validator_stats")
+	if err != nil {
+		return fmt.Errorf("error retrieving lastStatsDay: %v", err)
+	}
+
+	if validatorPageData.AttestationsCount > 0 {
+		// get attestationStats from validator_stats
+		attestationStats := struct {
+			MissedAttestations   uint64 `db:"missed_attestations"`
+			OrphanedAttestations uint64 `db:"orphaned_attestations"`
+		}{}
+		if lastStatsDay > 0 {
+			err = db.ReaderDb.Get(&attestationStats, "select coalesce(sum(missed_attestations), 0) as missed_attestations, coalesce(sum(orphaned_attestations), 0) as orphaned_attestations from validator_stats where validatorindex = $1", index)
+			if err != nil {
+				return fmt.Errorf("error retrieving validator attestationStats: %v", err)
+			}
+		}
+
+		// add attestationStats that are not yet in validator_stats
+		attestationStatsNotInStats := struct {
+			MissedAttestations   uint64 `db:"missed_attestations"`
+			OrphanedAttestations uint64 `db:"orphaned_attestations"`
+		}{}
+		err = db.ReaderDb.Get(&attestationStatsNotInStats, "select coalesce(sum(case when status = 0 then 1 else 0 end), 0) as missed_attestations, coalesce(sum(case when status = 3 then 1 else 0 end), 0) as orphaned_attestations from attestation_assignments_p where week >= $1/7 and epoch >= ($1+1)*225 and epoch < $2 and validatorindex = $3", lastStatsDay, services.LatestEpoch(), index)
+		if err != nil {
+			return fmt.Errorf("error retrieving validator attestationStatsAfterLastStatsDay: %v", err)
+		}
+		validatorPageData.MissedAttestationsCount = attestationStats.MissedAttestations + attestationStatsNotInStats.MissedAttestations
+		validatorPageData.OrphanedAttestationsCount = attestationStats.OrphanedAttestations + attestationStatsNotInStats.OrphanedAttestations
+		validatorPageData.ExecutedAttestationsCount = validatorPageData.AttestationsCount - validatorPageData.MissedAttestationsCount - validatorPageData.OrphanedAttestationsCount
+		validatorPageData.UnmissedAttestationsPercentage = float64(validatorPageData.AttestationsCount-validatorPageData.MissedAttestationsCount) / float64(validatorPageData.AttestationsCount)
+	}
+
+	// logger.Infof("attestations data retrieved, elapsed: %v", time.Since(start))
+	// start = time.Now()
+
+	if validatorPageData.Slashed {
+		var slashingInfo struct {
+			Slot    uint64
+			Slasher uint64
+			Reason  string
+		}
+		err = db.ReaderDb.Get(&slashingInfo,
+			`select block_slot as slot, proposer as slasher, 'Attestation Violation' as reason
+				from blocks_attesterslashings a1 left join blocks b1 on b1.slot = a1.block_slot
+				where b1.status = '1' and $1 = ANY(a1.attestation1_indices) and $1 = ANY(a1.attestation2_indices)
+			union all
+			select block_slot as slot, proposer as slasher, 'Proposer Violation' as reason
+				from blocks_proposerslashings a2 left join blocks b2 on b2.slot = a2.block_slot
+				where b2.status = '1' and a2.proposerindex = $1
+			limit 1`,
+			index)
+		if err != nil {
+			return fmt.Errorf("error retrieving validator slashing info: %v", err)
+		}
+		validatorPageData.SlashedBy = slashingInfo.Slasher
+		validatorPageData.SlashedAt = slashingInfo.Slot
+		validatorPageData.SlashedFor = slashingInfo.Reason
+	}
+
+	err = db.ReaderDb.Get(&validatorPageData.SlashingsCount, `select COALESCE(sum(attesterslashingscount) + sum(proposerslashingscount), 0) from blocks where blocks.proposer = $1 and blocks.status = '1'`, index)
+	if err != nil {
+		return fmt.Errorf("error retrieving slashings-count: %v", err)
+	}
+
+	// logger.Infof("slashing data retrieved, elapsed: %v", time.Since(start))
+	// start = time.Now()
+
+	err = db.ReaderDb.Get(&validatorPageData.AverageAttestationInclusionDistance, `
+		SELECT COALESCE(
+			AVG(1 + inclusionslot - COALESCE((
+				SELECT MIN(slot)
+				FROM blocks
+				WHERE slot > aa.attesterslot AND blocks.status = '1'
+			), 0)
+		), 0)
+		FROM attestation_assignments_p aa
+		INNER JOIN blocks ON blocks.slot = aa.inclusionslot AND blocks.status <> '3'
+		WHERE aa.week >= $1 / 1575 AND aa.epoch > $1 AND aa.validatorindex = $2 AND aa.inclusionslot > 0
+		`, int64(validatorPageData.Epoch)-100, index)
+	if err != nil {
+		return fmt.Errorf("error retrieving AverageAttestationInclusionDistance: %v", err)
+	}
+
+	if validatorPageData.AverageAttestationInclusionDistance > 0 {
+		validatorPageData.AttestationInclusionEffectiveness = 1.0 / validatorPageData.AverageAttestationInclusionDistance * 100
+	}
+
+	var attestationStreaks []struct {
+		Length uint64
+	}
+	err = db.ReaderDb.Select(&attestationStreaks, `select greatest(0,length) as length from validator_attestation_streaks where validatorindex = $1 and status = 1 order by start desc`, index)
+	if err != nil {
+		return fmt.Errorf("error retrieving AttestationStreaks: %v", err)
+	}
+	if len(attestationStreaks) > 1 {
+		validatorPageData.CurrentAttestationStreak = attestationStreaks[0].Length
+		validatorPageData.LongestAttestationStreak = attestationStreaks[1].Length
+	} else if len(attestationStreaks) > 0 {
+		validatorPageData.CurrentAttestationStreak = attestationStreaks[0].Length
+		validatorPageData.LongestAttestationStreak = attestationStreaks[0].Length
+	}
+
+	// logger.Infof("effectiveness data retrieved, elapsed: %v", time.Since(start))
+	// start = time.Now()
+
+	err = db.ReaderDb.Get(&validatorPageData.SyncCount, `SELECT count(*)*$1 FROM sync_committees WHERE validatorindex = $2`, utils.Config.Chain.Config.EpochsPerSyncCommitteePeriod*utils.Config.Chain.Config.SlotsPerEpoch, index)
+	if err != nil {
+		return fmt.Errorf("error retrieving syncCount for validator %v: %v", index, err)
+	}
+
+	if validatorPageData.SyncCount > 0 {
+		// get syncStats from validator_stats
+		syncStats := struct {
+			ParticipatedSync uint64 `db:"participated_sync"`
+			MissedSync       uint64 `db:"missed_sync"`
+			OrphanedSync     uint64 `db:"orphaned_sync"`
+		}{}
+		if lastStatsDay > 0 {
+			err = db.ReaderDb.Get(&syncStats, "select coalesce(sum(participated_sync), 0) as participated_sync, coalesce(sum(missed_sync), 0) as missed_sync, coalesce(sum(orphaned_sync), 0) as orphaned_sync from validator_stats where validatorindex = $1", index)
+			if err != nil {
+				return fmt.Errorf("error retrieving validator syncStats: %v", err)
+			}
+		}
+
+		// add syncStats that are not yet in validator_stats
+		syncStatsNotInStats := struct {
+			ScheduledSync    uint64 `db:"scheduled_sync"`
+			ParticipatedSync uint64 `db:"participated_sync"`
+			MissedSync       uint64 `db:"missed_sync"`
+			OrphanedSync     uint64 `db:"orphaned_sync"`
+		}{}
+		err = db.ReaderDb.Get(&syncStatsNotInStats, "select coalesce(sum(case when status = 0 then 1 else 0 end), 0) as scheduled_sync, coalesce(sum(case when status = 1 then 1 else 0 end), 0) as participated_sync, coalesce(sum(case when status = 2 then 1 else 0 end), 0) as missed_sync, coalesce(sum(case when status = 3 then 1 else 0 end), 0) as orphaned_sync from sync_assignments_p where week >= $1/7 and slot >= ($1+1)*225*32 and validatorindex = $2", lastStatsDay, index)
+		if err != nil {
+			return fmt.Errorf("error retrieving validator syncStatsAfterLastStatsDay: %v", err)
+		}
+
+		validatorPageData.ScheduledSyncCount = syncStatsNotInStats.ScheduledSync
+		validatorPageData.ParticipatedSyncCount = syncStats.ParticipatedSync + syncStatsNotInStats.ParticipatedSync
+		validatorPageData.MissedSyncCount = syncStats.MissedSync + syncStatsNotInStats.MissedSync
+		validatorPageData.OrphanedSyncCount = syncStats.OrphanedSync + syncStatsNotInStats.OrphanedSync
+
+		validatorPageData.UnmissedSyncPercentage = float64(validatorPageData.SyncCount-validatorPageData.MissedSyncCount) / float64(validatorPageData.SyncCount)
+	}
+
+	return nil
 }
 
 // ValidatorDeposits returns a validator's deposits in json
@@ -1614,6 +1598,72 @@ func ValidatorSync(w http.ResponseWriter, r *http.Request) {
 	err = json.NewEncoder(w).Encode(data)
 	if err != nil {
 		logger.Errorf("error enconding json response for %v route: %v", r.URL.String(), err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+}
+
+func ValidatorStatus(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	vars := mux.Vars(r)
+	index, err := strconv.ParseUint(vars["index"], 10, 64)
+	if err != nil {
+		logger.Errorf("error parsing validator index: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	validatorStatus := types.ValidatorPageData{}
+
+	err = db.ReaderDb.Get(&validatorStatus, `
+	SELECT
+		validators.pubkey,
+		validators.validatorindex,
+		validators.withdrawableepoch,
+		validators.effectivebalance,
+		validators.slashed,
+		validators.activationeligibilityepoch,
+		validators.activationepoch,
+		validators.exitepoch,
+		validators.lastattestationslot,
+		COALESCE(validators.balance, 0) AS balance,
+		COALESCE(validator_performance.rank7d, 0) AS rank7d,
+		COALESCE(validator_performance_count.total_count, 0) AS rank_count,
+		validators.status,
+		COALESCE(validators.balanceactivation, 0) AS balanceactivation,
+		COALESCE(validators.balance7d, 0) AS balance7d,
+		COALESCE(validators.balance31d, 0) AS balance31d
+	FROM validators
+	LEFT JOIN validator_names ON validators.pubkey = validator_names.publickey
+	LEFT JOIN validator_pool ON validators.pubkey = validator_pool.publickey
+	LEFT JOIN validator_performance ON validators.validatorindex = validator_performance.validatorindex
+	LEFT JOIN (SELECT MAX(validatorindex)+1 FROM validator_performance) validator_performance_count(total_count) ON true
+	WHERE validators.validatorindex = $1`, index)
+	if err != nil {
+		logger.Errorf("error retrieving validator status from db: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	deposits, err := db.GetValidatorDeposits(validatorStatus.PublicKey)
+	if err != nil {
+		logger.Errorf("error getting validator-deposits from db: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	err = setValidatorPageData(&validatorStatus, deposits)
+	if err != nil {
+		logger.Error(err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	err = json.NewEncoder(w).Encode(validatorStatus)
+	if err != nil {
+		logger.Errorf("error enconding json response for %v route: %v", r.URL.String(), err)
+		logger.Infof("%+v", validatorStatus)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}

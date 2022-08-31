@@ -317,49 +317,52 @@ $(document).ready(function () {
   })
 })
 
-$("[aria-ethereum-date]").each(function (item) {
-  var dt = $(this).attr("aria-ethereum-date")
-  var format = $(this).attr("aria-ethereum-date-format")
+function setAriaEthereumDate(){
+  $("[aria-ethereum-date]").each(function (item) {
+    var dt = $(this).attr("aria-ethereum-date")
+    var format = $(this).attr("aria-ethereum-date-format")
 
-  if (!format) {
-    format = "ff"
-  }
+    if (!format) {
+      format = "ff"
+    }
 
-  if (format === "FROMNOW") {
-    $(this).text(luxon.DateTime.fromMillis(dt * 1000).toRelative({ style: "short" }))
-    $(this).attr("title", luxon.DateTime.fromMillis(dt * 1000).toFormat("ff"))
-    $(this).attr("data-toggle", "tooltip")
-  } else if (format === "LOCAL") {
-    var local = luxon.DateTime.fromMillis(dt * 1000)
-    var utc = local.toUTC()
-    var utcHour = utc["c"]["hour"]
-    var localHour = local["c"]["hour"]
-    var localMinute = local["c"]["minute"]
-    var localSecond = local["c"]["minute"]
-    var diff = localHour - utcHour
-    var utcDiff = ""
-    if (diff < 0) {
-      utcDiff = " UTC - " + diff * -1
+    if (format === "FROMNOW") {
+      $(this).text(luxon.DateTime.fromMillis(dt * 1000).toRelative({ style: "short" }))
+      $(this).attr("title", luxon.DateTime.fromMillis(dt * 1000).toFormat("ff"))
+      $(this).attr("data-toggle", "tooltip")
+    } else if (format === "LOCAL") {
+      var local = luxon.DateTime.fromMillis(dt * 1000)
+      var utc = local.toUTC()
+      var utcHour = utc["c"]["hour"]
+      var localHour = local["c"]["hour"]
+      var localMinute = local["c"]["minute"]
+      var localSecond = local["c"]["minute"]
+      var diff = localHour - utcHour
+      var utcDiff = ""
+      if (diff < 0) {
+        utcDiff = " UTC - " + diff * -1
+      } else {
+        utcDiff = " UTC + " + diff
+      }
+      if (localHour.toString().length == 1) {
+        localHour = "0" + localHour
+      }
+      if (localMinute.toString().length == 1) {
+        localMinute = "0" + localMinute
+      }
+      if (localSecond.toString().length == 1) {
+        localSecond = "0" + localSecond
+      }
+
+      $(this).text(local.toFormat("MMM-dd-yyyy") + " " + localHour + ":" + localMinute + ":" + localSecond + utcDiff + "h")
+      $(this).attr("title", luxon.DateTime.fromMillis(dt * 1000).toFormat("ff"))
+      $(this).attr("data-toggle", "tooltip")
     } else {
-      utcDiff = " UTC + " + diff
+      $(this).text(luxon.DateTime.fromMillis(dt * 1000).toFormat(format))
     }
-    if (localHour.toString().length == 1) {
-      localHour = "0" + localHour
-    }
-    if (localMinute.toString().length == 1) {
-      localMinute = "0" + localMinute
-    }
-    if (localSecond.toString().length == 1) {
-      localSecond = "0" + localSecond
-    }
-
-    $(this).text(local.toFormat("MMM-dd-yyyy") + " " + localHour + ":" + localMinute + ":" + localSecond + utcDiff + "h")
-    $(this).attr("title", luxon.DateTime.fromMillis(dt * 1000).toFormat("ff"))
-    $(this).attr("data-toggle", "tooltip")
-  } else {
-    $(this).text(luxon.DateTime.fromMillis(dt * 1000).toFormat(format))
-  }
-})
+  })
+}
+setAriaEthereumDate()
 
 $(document).ready(function () {
   var clipboard = new ClipboardJS("[data-clipboard-text]")
