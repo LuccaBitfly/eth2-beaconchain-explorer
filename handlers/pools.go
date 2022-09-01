@@ -13,7 +13,7 @@ import (
 var poolsServicesTemplate = template.Must(template.New("poolsServices").Funcs(utils.GetTemplateFuncs()).ParseFiles(
 	"templates/layout.html",
 	"templates/pools/pools.html",
-	"templates/pools/loadingSvg.html",
+	"templates/svg/pieChart.html",
 	"templates/pools/charts.html",
 	"templates/bannerPools.html"))
 
